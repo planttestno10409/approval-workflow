@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>承認ワークフローツール</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Hiragino Sans','Meiryo',sans-serif;background:#f5f5f3}
+.app{display:flex;min-height:100vh}
+.sidebar{width:200px;background:#fff;border-right:1px solid #e5e5e3;display:flex;flex-direction:column;padding:1rem 0;flex-shrink:0;position:fixed;top:0;left:0;height:100vh;z-index:20}
+.logo{padding:0 1rem 1rem;font-size:14px;font-weight:600;color:#1a1a1a;border-bottom:1px solid #e5e5e3;margin-bottom:.5rem}
+.logo span{font-size:11px;color:#888;display:block;margin-top:2px;font-weight:400}
+.nav{padding:8px 1rem;font-size:13px;color:#666;cursor:pointer;border-left:2px solid transparent}
+.nav:hover{background:#f5f5f3;color:#1a1a1a}
+.nav.on{color:#185FA5;border-left-color:#185FA5;background:#E6F1FB;font-weight:600}
+.nav-sep{margin:.5rem 0;border-top:1px solid #e5e5e3}
+.main{flex:1;margin-left:200px;overflow-y:auto}
+.topbar{background:#fff;border-bottom:1px solid #e5e5e3;padding:.75rem 1.25rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.ttl{font-size:14px;font-weight:600;color:#1a1a1a}
+.btn{padding:6px 12px;font-size:12px;border-radius:8px;cursor:pointer;border:1px solid #ccc;background:#fff;color:#1a1a1a}
+.btn:hover{background:#f5f5f3}
+.btnp{background:#185FA5;color:#fff;border-color:#185FA5}.btnp:hover{background:#0C447C}
+.btng{background:#EAF3DE;color:#3B6D11;border-color:#C0DD97}.btng:hover{background:#C0DD97}
+.btnr{background:#FCEBEB;color:#A32D2D;border-color:#F7C1C1}.btnr:hover{background:#F7C1C1}
+.content{padding:1rem}
+.card{background:#fff;border:1px solid #e5e5e3;border-radius:12px;margin-bottom:1rem}
+.ch{padding:.8rem 1rem;border-bottom:1px solid #e5e5e3;display:flex;align-items:center;justify-content:space-between}
+.ct{font-size:13px;font-weight:600;color:#1a1a1a}
+.badge{display:inline-block;padding:2px 7px;border-radius:999px;font-size:11px;font-weight:600}
+.bp{background:#FAEEDA;color:#854F0B}.ba{background:#EAF3DE;color:#3B6D11}.br{background:#FCEBEB;color:#A32D2D}.bv{background:#E6F1FB;color:#185FA5}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:600;color:#888;text-align:left;padding:8px 1rem;border-bottom:1px solid #e5e5e3}
+td{font-size:12px;color:#1a1a1a;padding:10px 1rem;border-bottom:1px solid #e5e5e3}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f9f9f7}
+.al{font-size:12px;color:#185FA5;cursor:pointer}.al:hover{text-decoration:underline}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:1rem}
+.metric{background:#f5f5f3;border-radius:8px;padding:.75rem}
+.pdf-wrap{position:relative;background:#e0e0e0;border-radius:8px;overflow:hidden;min-height:500px}
+.pdf-canvas{display:block;width:100%}
+.stamp-layer{position:absolute;top:0;left:0;width:100%;height:100%}
+.stamp-item{position:absolute;transform:translate(-50%,-50%);cursor:move;pointer-events:auto}
+.drop-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:#999;pointer-events:none;text-align:center;padding:1rem}
+.hanko-row{display:flex;border:1px solid #ddd;border-radius:6px;overflow:hidden;margin-bottom:.75rem;background:#fafafa;flex-wrap:wrap}
+.hanko-cell{flex:1;min-width:70px;border-right:1px solid #ddd;text-align:center;padding:5px 3px}
+.hanko-cell:last-child{border-right:none}
+.hlabel{font-size:10px;color:#888;margin-bottom:3px}
+.hempty{width:46px;height:46px;border:1.5px dashed #ccc;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#aaa;margin:0 auto}
+.hdate{font-size:10px;color:#888;margin-top:3px}
+.upload-zone{border:1.5px dashed #ccc;border-radius:8px;padding:1rem;text-align:center;cursor:pointer;transition:border-color .15s}
+.upload-zone:hover{border-color:#185FA5}
+.upload-zone input{display:none}
+.tip{font-size:11px;color:#666;background:#f5f5f3;border-radius:6px;padding:6px 10px;margin-bottom:.75rem;line-height:1.6}
+.tip.active{background:#E6F1FB;color:#0C447C;border:1px solid #B5D4F4}
+.mbg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.38);z-index:100;align-items:center;justify-content:center}
+.mbg.open{display:flex}
+.modal{background:#fff;border-radius:12px;border:1px solid #e5e5e3;width:520px;max-width:96vw;max-height:92vh;overflow-y:auto}
+.mh{padding:.85rem 1rem;border-bottom:1px solid #e5e5e3;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;color:#1a1a1a;position:sticky;top:0;background:#fff;z-index:1}
+.mb{padding:1rem}
+.mf{padding:.85rem 1rem;border-top:1px solid #e5e5e3;display:flex;justify-content:flex-end;gap:8px;position:sticky;bottom:0;background:#fff}
+.xbtn{background:none;border:none;font-size:17px;color:#888;cursor:pointer;line-height:1}
+.fg{margin-bottom:.75rem}
+.fl{font-size:11px;color:#666;margin-bottom:3px;display:block}
+input[type=text],select,textarea{width:100%;font-size:12px;padding:6px 8px;border:1px solid #ccc;border-radius:6px;outline:none;font-family:inherit}
+input[type=text]:focus,select:focus,textarea:focus{border-color:#185FA5}
+textarea{height:60px;resize:vertical}
+.approver-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:6px 8px;background:#f5f5f3;border-radius:6px}
+.approver-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#f5f5f3;border:1px solid #ddd;border-radius:999px;font-size:11px;color:#1a1a1a;cursor:pointer;user-select:none}
+.approver-chip:hover{background:#E6F1FB;border-color:#B5D4F4;color:#185FA5}
+.approver-chip.selected{background:#E6F1FB;border-color:#185FA5;color:#185FA5;font-weight:600}
+.route-arrow{font-size:12px;color:#888}
+.notify{display:none;background:#EAF3DE;border:1px solid #C0DD97;border-radius:8px;padding:7px 12px;font-size:12px;color:#3B6D11;margin-bottom:.75rem}
+
+@media print{
+  .sidebar,.topbar,.card:not(#printTarget),.btn,select,button,label{display:none!important}
+  .main{margin-left:0}
+  #vStamp{display:block!important}
+  .pdf-wrap{border-radius:0;background:#fff}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="sidebar">
+  <div class="logo">承認ワークフロー<span>社内書類管理システム</span></div>
+  <div class="nav on" onclick="sv('list',this)">申請一覧</div>
+  <div class="nav" onclick="sv('stamp',this)">PDF捺印</div>
+  <div class="nav" onclick="sv('approver',this)">承認待ち</div>
+  <div class="nav-sep"></div>
+  <div class="nav" onclick="sv('settings',this)">設定</div>
+  <div style="flex:1"></div>
+  <div style="padding:.75rem 1rem;font-size:11px;color:#aaa">Teams / Outlook 連携対応</div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <div class="ttl" id="vTitle">申請一覧</div>
+    <button class="btn btnp" id="topBtn" onclick="openNew()">+ 新規申請</button>
+  </div>
+  <div class="content">
+    <div class="notify" id="notify">申請を提出しました。承認者へ通知が送信されました。</div>
+
+    <!-- 申請一覧 -->
+    <div id="vList">
+      <div class="metrics">
+        <div class="metric"><div style="font-size:11px;color:#888;margin-bottom:4px">全申請</div><div style="font-size:20px;font-weight:600;color:#185FA5" id="mT">0</div></div>
+        <div class="metric"><div style="font-size:11px;color:#888;margin-bottom:4px">承認待ち</div><div style="font-size:20px;font-weight:600;color:#BA7517" id="mP">0</div></div>
+        <div class="metric"><div style="font-size:11px;color:#888;margin-bottom:4px">承認済み</div><div style="font-size:20px;font-weight:600;color:#3B6D11" id="mA">0</div></div>
+        <div class="metric"><div style="font-size:11px;color:#888;margin-bottom:4px">却下</div><div style="font-size:20px;font-weight:600;color:#A32D2D" id="mR">0</div></div>
+      </div>
+      <div class="card">
+        <div class="ch"><div class="ct">申請一覧</div></div>
+        <div style="overflow-x:auto">
+        <table><thead><tr><th>番号</th><th>件名</th><th>申請者</th><th>提出日</th><th>添付</th><th>承認ルート</th><th>捺印</th><th>ステータス</th><th>操作</th></tr></thead>
+        <tbody id="tBody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PDF捺印 -->
+    <div id="vStamp" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 270px;gap:1rem;align-items:start">
+        <div>
+          <div class="card" style="padding:.75rem">
+            <div style="display:flex;gap:8px;margin-bottom:.6rem">
+              <select id="stampSel" style="flex:1;font-size:12px" onchange="loadStampView()"></select>
+            </div>
+            <div class="tip" id="stampTip">手順: ① PDFをアップロード → ② 承認者を選んで「押印モードON」→ ③ PDF上をクリックで押印</div>
+            <div class="pdf-wrap" id="pdfWrap">
+              <canvas id="pdfCanvas" class="pdf-canvas" style="display:none"></canvas>
+              <div class="stamp-layer" id="stampLayer"></div>
+              <div class="drop-hint" id="dropHint">PDFをアップロードしてください</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card" style="padding:.75rem;margin-bottom:.75rem">
+            <div class="ct" style="margin-bottom:.6rem">ファイルをアップロード</div>
+            <div class="upload-zone" onclick="document.getElementById('pdfFile').click()">
+              <div style="font-size:12px;color:#666">クリックしてファイルを選択</div>
+              <div style="font-size:11px;color:#aaa;margin-top:3px">PDF / 画像 / Word / Excel</div>
+              <input type="file" id="pdfFile" accept=".pdf,application/pdf,image/*,.docx,.xlsx" onchange="handleFile(event)">
+            </div>
+            <div id="fileInfo" style="display:none;margin-top:.5rem;font-size:11px;color:#185FA5;word-break:break-all"></div>
+          </div>
+          <div class="card" style="padding:.75rem;margin-bottom:.75rem">
+            <div class="ct" style="margin-bottom:.6rem">捺印状況</div>
+            <div class="hanko-row" id="hankoRow"></div>
+            <div style="font-size:11px;color:#666;margin-bottom:.4rem">押印する承認者を選択</div>
+            <select id="stamperSel" style="font-size:12px;width:100%;margin-bottom:.5rem"></select>
+            <button class="btn btng" style="width:100%;margin-bottom:.4rem" id="stampModeBtn" onclick="toggleStampMode()">押印モード ON</button>
+            <button class="btn btnr" style="width:100%" onclick="clearStamps()">押印をリセット</button>
+          </div>
+          <div class="card" style="padding:.75rem">
+            <div class="ct" style="margin-bottom:.6rem">出力</div>
+            <button class="btn btnp" style="width:100%;margin-bottom:.4rem" onclick="window.print()">印刷 / PDF保存</button>
+            <div style="font-size:11px;color:#888;line-height:1.5">印刷ダイアログの「送信先」から「PDFに保存」を選択してください。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 承認待ち -->
+    <div id="vApprover" style="display:none">
+      <div class="card">
+        <div class="ch"><div class="ct">あなたへの承認依頼</div></div>
+        <table><thead><tr><th>番号</th><th>件名</th><th>申請者</th><th>提出日</th><th>操作</th></tr></thead>
+        <tbody id="aBody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- 設定 -->
+    <div id="vSettings" style="display:none">
+      <div class="card" style="max-width:540px">
+        <div class="ch"><div class="ct">基本設定</div></div>
+        <div style="padding:1rem">
+          <div class="fg">
+            <label class="fl">申請者名（自分の氏名）</label>
+            <input type="text" id="selfNameInput" placeholder="例：田中 太郎">
+          </div>
+        </div>
+      </div>
+      <div class="card" style="max-width:540px">
+        <div class="ch">
+          <div class="ct">承認者リスト</div>
+          <button class="btn btnp" style="padding:4px 10px;font-size:11px" onclick="addApproverRow()">+ 追加</button>
+        </div>
+        <div style="padding:1rem">
+          <div style="font-size:11px;color:#888;margin-bottom:.75rem;line-height:1.6">最大10名まで登録できます。申請時にここから承認者を選んでルートを組み立てます。</div>
+          <div id="approverList"></div>
+          <div style="margin-top:.75rem;display:flex;align-items:center;gap:10px">
+            <button class="btn btnp" onclick="saveSettings()">設定を保存</button>
+            <span id="saveMsg" style="font-size:11px;color:#3B6D11;display:none">保存しました</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 新規申請モーダル -->
+<div class="mbg" id="newModal">
+<div class="modal">
+  <div class="mh">新規申請<button class="xbtn" onclick="closeNew()">×</button></div>
+  <div class="mb">
+    <div class="fg">
+      <label class="fl">申請者名</label>
+      <div id="selfNameDisplay" style="font-size:12px;color:#1a1a1a;padding:4px 0;font-weight:600"></div>
+    </div>
+    <div class="fg"><label class="fl">件名</label><input type="text" id="nTitle" placeholder="例：備品購入申請 — ノートPC 2台"/></div>
+    <div class="fg"><label class="fl">種別</label><select id="nType"><option>購入申請</option><option>出張申請</option><option>契約承認</option><option>その他</option></select></div>
+    <div class="fg"><label class="fl">詳細・理由</label><textarea id="nBody" placeholder="申請の背景や必要性を記入してください"></textarea></div>
+    <div class="fg">
+      <label class="fl">承認ルートを選択（クリックで追加・順番が承認順）</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:32px" id="approverChips"></div>
+      <div style="font-size:11px;color:#666;margin-bottom:5px">選択したルート:</div>
+      <div id="selectedRouteDisplay" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-height:28px;padding:6px 8px;background:#f5f5f3;border-radius:6px;font-size:12px">
+        <span style="color:#aaa;font-size:11px">承認者を選択してください</span>
+      </div>
+      <button onclick="clearRoute()" style="margin-top:4px;font-size:11px;color:#888;background:none;border:none;cursor:pointer;padding:0">ルートをリセット</button>
+    </div>
+    <div class="fg">
+      <label class="fl">添付ファイル（PDF / Word / Excel / 画像）</label>
+      <div class="upload-zone" onclick="document.getElementById('attachFile').click()">
+        <div style="font-size:12px;color:#666">クリックしてファイルを選択</div>
+        <input type="file" id="attachFile" accept=".pdf,image/*,.docx,.xlsx" onchange="handleAttach(event)">
+      </div>
+      <div id="attachInfo" style="display:none;margin-top:.4rem;font-size:11px;color:#185FA5;word-break:break-all"></div>
+    </div>
+  </div>
+  <div class="mf"><button class="btn" onclick="closeNew()">キャンセル</button><button class="btn btnp" onclick="submitNew()">提出する</button></div>
+</div>
+</div>
+
+<!-- 承認モーダル -->
+<div class="mbg" id="approveModal">
+<div class="modal" style="width:440px">
+  <div class="mh" id="aMTitle">承認確認<button class="xbtn" onclick="closeApprove()">×</button></div>
+  <div class="mb">
+    <div style="font-size:12px;color:#666;margin-bottom:.75rem">承認すると捺印が可能になります。</div>
+    <div style="text-align:center;margin-bottom:.75rem">
+      <div style="font-size:11px;color:#888;margin-bottom:6px">印鑑プレビュー</div>
+      <canvas id="aStampC" width="80" height="80" style="border-radius:50%;border:1.5px solid #E24B4A"></canvas>
+    </div>
+    <div class="fg"><label class="fl">コメント（任意）</label><textarea id="aComment" placeholder="承認コメントを入力"></textarea></div>
+  </div>
+  <div class="mf">
+    <button class="btn" onclick="closeApprove()">キャンセル</button>
+    <button class="btn btnr" onclick="doReject()">却下</button>
+    <button class="btn btng" onclick="doApprove()">承認する</button>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const pdfjsLib = window['pdfjs-dist/build/pdf'];
+if(pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const today = new Date().toISOString().slice(0,10);
+const stampColors = ['#E24B4A','#185FA5','#639922','#BA7517','#993556','#534AB7','#0F6E56','#993C1D','#3B6D11','#A32D2D'];
+
+let settings = {
+  selfName: '自分（申請者）',
+  approvers: [
+    {id:1, name:'山本 部長', role:'部長'},
+    {id:2, name:'坂本 役員', role:'役員'},
+    {id:3, name:'橋本 社長', role:'社長'},
+  ]
+};
+
+let reqs = [
+  {id:'REQ-002',title:'出張旅費申請 — 東京出張',applicant:'山田 花子',date:'2026-04-03',status:'review',route:[{id:1,name:'山本 部長',role:'部長'},{id:2,name:'坂本 役員',role:'役員'},{id:3,name:'橋本 社長',role:'社長'}],step:1,type:'出張申請',body:'4月10〜11日 東京出張費用。',stamps:['done',null,null],fileData:null,fileName:null},
+  {id:'REQ-001',title:'サーバー増設費用承認',applicant:'田中 一郎',date:'2026-04-05',status:'pending',route:[{id:1,name:'山本 部長',role:'部長'},{id:2,name:'坂本 役員',role:'役員'},{id:3,name:'橋本 社長',role:'社長'}],step:0,type:'契約承認',body:'クラウドサーバー増設。総額120万円。',stamps:[null,null,null],fileData:null,fileName:null},
+];
+
+let pendingId=null, stampModeActive=false, attachDataUrl=null, attachFileName=null, selectedRoute=[];
+
+function getColor(i){ return stampColors[i % stampColors.length]; }
+function initial(name){ return name ? name.charAt(0) : '?'; }
+
+function statusBadge(s){
+  const m={pending:['bp','審査中'],approved:['ba','承認済'],rejected:['br','却下'],review:['bv','確認中']};
+  return `<span class="badge ${m[s][0]}">${m[s][1]}</span>`;
+}
+
+function drawHanko(canvas, ini, color, size){
+  canvas.width=size; canvas.height=size;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,size,size);
+  ctx.strokeStyle=color; ctx.lineWidth=size<=60?1.5:2;
+  ctx.beginPath(); ctx.arc(size/2,size/2,size/2-1.5,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(size/2,size/2,size/2-5,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle=color;
+  ctx.font=Math.round(size*0.36)+'px serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(ini, size/2, size/2);
+}
+
+function renderTable(){
+  document.getElementById('tBody').innerHTML = reqs.map(r => `
+    <tr>
+      <td style="font-family:monospace;font-size:11px;color:#888">${r.id}</td>
+      <td>${r.title}</td>
+      <td>${r.applicant}</td>
+      <td style="color:#888">${r.date}</td>
+      <td style="font-size:11px">${r.fileName ? `<span style="color:#185FA5">${r.fileName}</span>` : '<span style="color:#ccc">なし</span>'}</td>
+      <td style="font-size:11px;color:#444">${r.route.map(a=>a.name.split(' ')[0]).join(' → ')}</td>
+      <td style="font-size:11px;color:#888">${r.stamps.filter(s=>s==='done').length}/${r.route.length}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td style="display:flex;gap:5px;flex-wrap:wrap">
+        <span class="al" onclick="goStamp('${r.id}')">捺印</span>
+        ${(r.status==='pending'||r.status==='review') ? `<span class="al" style="color:#3B6D11" onclick="openApprove('${r.id}',${r.step})">承認</span>` : ''}
+      </td>
+    </tr>`).join('');
+  document.getElementById('mT').textContent=reqs.length;
+  document.getElementById('mP').textContent=reqs.filter(r=>r.status==='pending'||r.status==='review').length;
+  document.getElementById('mA').textContent=reqs.filter(r=>r.status==='approved').length;
+  document.getElementById('mR').textContent=reqs.filter(r=>r.status==='rejected').length;
+}
+
+function populateStampSel(){
+  document.getElementById('stampSel').innerHTML = reqs.map(r => `<option value="${r.id}">${r.id} — ${r.title}</option>`).join('');
+}
+
+function renderHankoRow(r){
+  const row = document.getElementById('hankoRow');
+  if(!r||!r.route.length){ row.innerHTML=''; return; }
+  row.innerHTML = r.route.map((a,i) => {
+    const done = r.stamps[i]==='done';
+    return `<div class="hanko-cell">
+      <div class="hlabel">${a.role||a.name}</div>
+      ${done ? `<canvas id="hc_${i}" width="46" height="46" style="border-radius:50%;display:block;margin:0 auto"></canvas>`
+              : `<div class="hempty">${initial(a.name)}</div>`}
+      <div class="hdate">${done ? today : '—'}</div>
+      <div style="font-size:10px;color:#888;margin-top:2px">${a.name}</div>
+    </div>`;
+  }).join('');
+  setTimeout(() => {
+    r.route.forEach((a,i) => {
+      const el = document.getElementById('hc_'+i);
+      if(el) drawHanko(el, initial(a.name), getColor(i), 46);
+    });
+  }, 50);
+  document.getElementById('stamperSel').innerHTML = r.route.map((a,i) => `<option value="${i}">${a.name}</option>`).join('');
+}
+
+function loadStampView(){
+  const id = document.getElementById('stampSel').value;
+  const r = reqs.find(x => x.id===id);
+  if(!r) return;
+  document.getElementById('stampLayer').innerHTML='';
+  stampModeActive=false; updateStampModeUI();
+  renderHankoRow(r);
+  if(r.fileData){ loadFileToCanvas(r.fileData, r.fileName); }
+  else { document.getElementById('dropHint').style.display='flex'; document.getElementById('pdfCanvas').style.display='none'; }
+}
+
+function goStamp(id){
+  sv('stamp', document.querySelectorAll('.nav')[1]);
+  populateStampSel();
+  document.getElementById('stampSel').value = id;
+  loadStampView();
+}
+
+function handleFile(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('fileInfo').style.display='block';
+    document.getElementById('fileInfo').textContent='読み込み済: '+file.name;
+    loadFileToCanvas(ev.target.result, file.name);
+    const id = document.getElementById('stampSel').value;
+    const r = reqs.find(x => x.id===id);
+    if(r){ r.fileData=ev.target.result; r.fileName=file.name; }
+    renderTable();
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleAttach(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    attachDataUrl=ev.target.result; attachFileName=file.name;
+    document.getElementById('attachInfo').style.display='block';
+    document.getElementById('attachInfo').textContent='添付: '+file.name;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadFileToCanvas(dataUrl, fileName){
+  document.getElementById('dropHint').style.display='none';
+  const canvas = document.getElementById('pdfCanvas');
+  canvas.style.display='block';
+  const isPdf = dataUrl.includes('application/pdf') || (fileName && fileName.toLowerCase().endsWith('.pdf'));
+  if(isPdf && pdfjsLib){
+    try {
+      const base64=dataUrl.split(',')[1];
+      const bin=atob(base64); const arr=new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+      pdfjsLib.getDocument({data:arr}).promise.then(pdf => {
+        pdf.getPage(1).then(page => {
+          const vp=page.getViewport({scale:1.6});
+          canvas.width=vp.width; canvas.height=vp.height; canvas.style.width='100%';
+          page.render({canvasContext:canvas.getContext('2d'), viewport:vp});
+        });
+      }).catch(() => showImgFallback(dataUrl));
+    } catch(e){ showImgFallback(dataUrl); }
+  } else { showImgFallback(dataUrl); }
+}
+
+function showImgFallback(dataUrl){
+  const canvas=document.getElementById('pdfCanvas');
+  const img=new Image();
+  img.onload=()=>{ canvas.width=img.width; canvas.height=img.height; canvas.style.width='100%'; canvas.getContext('2d').drawImage(img,0,0); };
+  img.src=dataUrl;
+}
+
+function toggleStampMode(){ stampModeActive=!stampModeActive; updateStampModeUI(); }
+function updateStampModeUI(){
+  const btn=document.getElementById('stampModeBtn');
+  const tip=document.getElementById('stampTip');
+  const layer=document.getElementById('stampLayer');
+  if(stampModeActive){
+    btn.textContent='押印モード OFF（クリックで押印中）'; btn.className='btn btnr';
+    layer.style.cursor='crosshair'; tip.className='tip active';
+    tip.textContent='押印モード有効 — PDF上をクリックすると印鑑が配置されます。終わったらOFFにしてください。';
+    layer.onclick=placeStamp;
+  } else {
+    btn.textContent='押印モード ON'; btn.className='btn btng';
+    layer.style.cursor='default'; tip.className='tip';
+    tip.textContent='手順: ① PDFをアップロード → ② 承認者を選んで「押印モードON」→ ③ PDF上をクリックで押印';
+    layer.onclick=null;
+  }
+}
+
+function placeStamp(e){
+  if(!stampModeActive) return;
+  const idx=parseInt(document.getElementById('stamperSel').value);
+  const layer=document.getElementById('stampLayer');
+  const rect=layer.getBoundingClientRect();
+  const xPct=((e.clientX-rect.left)/rect.width)*100;
+  const yPct=((e.clientY-rect.top)/rect.height)*100;
+  const div=document.createElement('div');
+  div.className='stamp-item'; div.style.left=xPct+'%'; div.style.top=yPct+'%';
+  const c=document.createElement('canvas'); c.width=70; c.height=70;
+  c.style.cssText='width:70px;height:70px;border-radius:50%;opacity:0.88;display:block';
+  const id=document.getElementById('stampSel').value;
+  const r=reqs.find(x=>x.id===id);
+  const approver=r?r.route[idx]:null;
+  drawHanko(c, approver?initial(approver.name):'印', getColor(idx), 70);
+  div.appendChild(c); makeDraggable(div,layer); layer.appendChild(div);
+  if(r) r.stamps[idx]='done';
+  renderHankoRow(r); renderTable();
+}
+
+function makeDraggable(el, container){
+  let ox,oy,dragging=false;
+  el.addEventListener('mousedown', e=>{ dragging=true; ox=e.clientX; oy=e.clientY; e.stopPropagation(); });
+  document.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const rect=container.getBoundingClientRect();
+    el.style.left=Math.min(100,Math.max(0,parseFloat(el.style.left)+(e.clientX-ox)/rect.width*100))+'%';
+    el.style.top=Math.min(100,Math.max(0,parseFloat(el.style.top)+(e.clientY-oy)/rect.height*100))+'%';
+    ox=e.clientX; oy=e.clientY;
+  });
+  document.addEventListener('mouseup', ()=>{ dragging=false; });
+}
+
+function clearStamps(){
+  document.getElementById('stampLayer').innerHTML='';
+  const id=document.getElementById('stampSel').value;
+  const r=reqs.find(x=>x.id===id);
+  if(r) r.stamps=r.route.map(()=>null);
+  renderHankoRow(r); renderTable();
+}
+
+function renderSettings(){
+  document.getElementById('selfNameInput').value=settings.selfName;
+  document.getElementById('approverList').innerHTML=settings.approvers.map(a=>`
+    <div class="approver-row">
+      <input type="text" placeholder="氏名（例：山本 太郎）" value="${a.name}" id="aname_${a.id}" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid #ccc;border-radius:5px">
+      <input type="text" placeholder="役職（例：部長）" value="${a.role}" id="arole_${a.id}" style="width:90px;font-size:12px;padding:5px 7px;border:1px solid #ccc;border-radius:5px">
+      <button onclick="removeApprover(${a.id})" style="background:none;border:none;cursor:pointer;color:#aaa;font-size:16px;padding:0 2px;line-height:1">×</button>
+    </div>`).join('');
+}
+
+function addApproverRow(){
+  if(settings.approvers.length >= 10){ alert('承認者は最大10名まで登録できます'); return; }
+  settings.approvers.push({id:Date.now(), name:'', role:''});
+  renderSettings();
+}
+
+function removeApprover(id){
+  settings.approvers=settings.approvers.filter(a=>a.id!==id);
+  renderSettings();
+}
+
+function saveSettings(){
+  settings.selfName=document.getElementById('selfNameInput').value||'申請者';
+  settings.approvers=settings.approvers.map(a=>({
+    id:a.id,
+    name:(document.getElementById('aname_'+a.id)||{}).value||a.name,
+    role:(document.getElementById('arole_'+a.id)||{}).value||a.role
+  })).filter(a=>a.name.trim());
+  const msg=document.getElementById('saveMsg');
+  msg.style.display='inline'; setTimeout(()=>msg.style.display='none',2000);
+  renderSettings();
+}
+
+function renderApproverChips(){
+  document.getElementById('approverChips').innerHTML = settings.approvers.map(a => `
+    <div class="approver-chip" id="chip_${a.id}" onclick="toggleRouteApprover(${a.id})">${a.name}<span style="font-size:10px;opacity:.7"> ${a.role}</span></div>
+  `).join('');
+  renderSelectedRouteDisplay();
+}
+
+function toggleRouteApprover(id){
+  const exists=selectedRoute.find(a=>a.id===id);
+  if(exists){ selectedRoute=selectedRoute.filter(a=>a.id!==id); }
+  else { const a=settings.approvers.find(x=>x.id===id); if(a) selectedRoute.push({...a}); }
+  document.querySelectorAll('[id^="chip_"]').forEach(el=>{
+    const cid=parseInt(el.id.replace('chip_',''));
+    el.className='approver-chip'+(selectedRoute.find(a=>a.id===cid)?' selected':'');
+  });
+  renderSelectedRouteDisplay();
+}
+
+function renderSelectedRouteDisplay(){
+  const el=document.getElementById('selectedRouteDisplay');
+  if(!selectedRoute.length){
+    el.innerHTML='<span style="color:#aaa;font-size:11px">承認者を選択してください</span>';
+    return;
+  }
+  el.innerHTML=selectedRoute.map((a,i)=>`${i>0?'<span class="route-arrow">→</span>':''}<span style="font-size:12px;color:#1a1a1a">${a.name}</span>`).join('');
+}
+
+function clearRoute(){
+  selectedRoute=[];
+  document.querySelectorAll('[id^="chip_"]').forEach(el=>el.className='approver-chip');
+  renderSelectedRouteDisplay();
+}
+
+function sv(v,el){
+  ['vList','vStamp','vApprover','vSettings'].forEach(x=>document.getElementById(x).style.display='none');
+  document.querySelectorAll('.nav').forEach(n=>n.classList.remove('on'));
+  if(el) el.classList.add('on');
+  const t={list:'申請一覧',stamp:'PDF捺印',approver:'承認待ち',settings:'設定'};
+  document.getElementById('vTitle').textContent=t[v];
+  document.getElementById('v'+v.charAt(0).toUpperCase()+v.slice(1)).style.display='block';
+  document.getElementById('topBtn').style.display=(v==='settings')?'none':'block';
+  if(v==='stamp'){ populateStampSel(); loadStampView(); }
+  if(v==='approver') renderApprover();
+  if(v==='settings') renderSettings();
+}
+
+function renderApprover(){
+  const p=reqs.filter(r=>r.status==='pending'||r.status==='review');
+  document.getElementById('aBody').innerHTML=p.map(r=>`
+    <tr>
+      <td style="font-family:monospace;font-size:11px;color:#888">${r.id}</td>
+      <td>${r.title}</td><td>${r.applicant}</td>
+      <td style="color:#888">${r.date}</td>
+      <td style="display:flex;gap:5px">
+        <button class="btn btng" style="padding:3px 9px;font-size:11px" onclick="openApprove('${r.id}',${r.step})">承認</button>
+        <button class="btn btnr" style="padding:3px 9px;font-size:11px" onclick="quickReject('${r.id}')">却下</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openApprove(id,stepIdx){
+  pendingId={id,stepIdx};
+  const r=reqs.find(x=>x.id===id);
+  document.getElementById('aMTitle').textContent='承認確認 — '+r.title;
+  const a=r.route[stepIdx];
+  drawHanko(document.getElementById('aStampC'), initial(a.name), getColor(stepIdx), 80);
+  document.getElementById('approveModal').classList.add('open');
+}
+function closeApprove(){ document.getElementById('approveModal').classList.remove('open'); pendingId=null; }
+function doApprove(){
+  if(!pendingId) return;
+  const {id,stepIdx}=pendingId;
+  const r=reqs.find(x=>x.id===id);
+  if(stepIdx>=r.route.length-1){ r.status='approved'; r.step=r.route.length; }
+  else { r.step=stepIdx+1; r.status='review'; }
+  closeApprove(); renderTable(); renderApprover();
+}
+function doReject(){
+  if(!pendingId) return;
+  reqs.find(x=>x.id===pendingId.id).status='rejected';
+  closeApprove(); renderTable(); renderApprover();
+}
+function quickReject(id){ reqs.find(x=>x.id===id).status='rejected'; renderTable(); renderApprover(); }
+
+function openNew(){
+  selectedRoute=[];
+  document.getElementById('nTitle').value='';
+  document.getElementById('nBody').value='';
+  document.getElementById('attachInfo').style.display='none';
+  attachDataUrl=null; attachFileName=null;
+  document.getElementById('selfNameDisplay').textContent=settings.selfName;
+  renderApproverChips();
+  document.getElementById('newModal').classList.add('open');
+}
+function closeNew(){ document.getElementById('newModal').classList.remove('open'); }
+
+function submitNew(){
+  if(!selectedRoute.length){ alert('承認者を1名以上選択してください'); return; }
+  const title=document.getElementById('nTitle').value||'無題の申請';
+  const type=document.getElementById('nType').value;
+  const body=document.getElementById('nBody').value||'（詳細なし）';
+  const newId='REQ-'+String(reqs.length+3).padStart(3,'0');
+  reqs.unshift({
+    id:newId, title, applicant:settings.selfName, date:today,
+    status:'pending', route:[...selectedRoute], step:0, type, body,
+    stamps:selectedRoute.map(()=>null), fileData:attachDataUrl, fileName:attachFileName
+  });
+  attachDataUrl=null; attachFileName=null;
+  document.getElementById('nTitle').value='';
+  document.getElementById('nBody').value='';
+  document.getElementById('attachInfo').style.display='none';
+  closeNew();
+  const nb=document.getElementById('notify'); nb.style.display='block'; setTimeout(()=>nb.style.display='none',4000);
+  renderTable(); populateStampSel();
+}
+
+renderTable();
+populateStampSel();
+updateStampModeUI();
+</script>
+</body>
+</html>
