@@ -71,13 +71,8 @@ textarea{height:60px;resize:vertical}
 .approver-chip.selected{background:#E6F1FB;border-color:#185FA5;color:#185FA5;font-weight:600}
 .route-arrow{font-size:12px;color:#888}
 .notify{display:none;background:#EAF3DE;border:1px solid #C0DD97;border-radius:8px;padding:7px 12px;font-size:12px;color:#3B6D11;margin-bottom:.75rem}
-
-@media print{
-  .sidebar,.topbar,.card:not(#printTarget),.btn,select,button,label{display:none!important}
-  .main{margin-left:0}
-  #vStamp{display:block!important}
-  .pdf-wrap{border-radius:0;background:#fff}
-}
+.loading{display:none;background:#E6F1FB;border:1px solid #B5D4F4;border-radius:8px;padding:7px 12px;font-size:12px;color:#185FA5;margin-bottom:.75rem}
+.error{display:none;background:#FCEBEB;border:1px solid #F7C1C1;border-radius:8px;padding:7px 12px;font-size:12px;color:#A32D2D;margin-bottom:.75rem}
 </style>
 </head>
 <body>
@@ -96,10 +91,15 @@ textarea{height:60px;resize:vertical}
 <div class="main">
   <div class="topbar">
     <div class="ttl" id="vTitle">申請一覧</div>
-    <button class="btn btnp" id="topBtn" onclick="openNew()">+ 新規申請</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn" onclick="loadFromGAS()">データ更新</button>
+      <button class="btn btnp" id="topBtn" onclick="openNew()">+ 新規申請</button>
+    </div>
   </div>
   <div class="content">
-    <div class="notify" id="notify">申請を提出しました。承認者へ通知が送信されました。</div>
+    <div class="notify" id="notify">申請を提出しました。承認者へ通知メールが送信されました。</div>
+    <div class="loading" id="loading">データを読み込んでいます...</div>
+    <div class="error" id="errorMsg">エラーが発生しました。再度お試しください。</div>
 
     <!-- 申請一覧 -->
     <div id="vList">
@@ -155,7 +155,7 @@ textarea{height:60px;resize:vertical}
           <div class="card" style="padding:.75rem">
             <div class="ct" style="margin-bottom:.6rem">出力</div>
             <button class="btn btnp" style="width:100%;margin-bottom:.4rem" onclick="window.print()">印刷 / PDF保存</button>
-            <div style="font-size:11px;color:#888;line-height:1.5">印刷ダイアログの「送信先」から「PDFに保存」を選択してください。</div>
+            <div style="font-size:11px;color:#888;line-height:1.5">印刷ダイアログから「PDFに保存」を選択してください。</div>
           </div>
         </div>
       </div>
@@ -256,6 +256,8 @@ textarea{height:60px;resize:vertical}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwPL6QXwW2bxvJfdXj5GTDsIkAxN2nDPZe4q3kaJE8uGnBtxkcZItEhDq0xLj0Uk9Wz_g/exec';
+
 const pdfjsLib = window['pdfjs-dist/build/pdf'];
 if(pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -271,19 +273,60 @@ let settings = {
   ]
 };
 
-let reqs = [
-  {id:'REQ-002',title:'出張旅費申請 — 東京出張',applicant:'山田 花子',date:'2026-04-03',status:'review',route:[{id:1,name:'山本 部長',role:'部長'},{id:2,name:'坂本 役員',role:'役員'},{id:3,name:'橋本 社長',role:'社長'}],step:1,type:'出張申請',body:'4月10〜11日 東京出張費用。',stamps:['done',null,null],fileData:null,fileName:null},
-  {id:'REQ-001',title:'サーバー増設費用承認',applicant:'田中 一郎',date:'2026-04-05',status:'pending',route:[{id:1,name:'山本 部長',role:'部長'},{id:2,name:'坂本 役員',role:'役員'},{id:3,name:'橋本 社長',role:'社長'}],step:0,type:'契約承認',body:'クラウドサーバー増設。総額120万円。',stamps:[null,null,null],fileData:null,fileName:null},
-];
-
+let reqs = [];
 let pendingId=null, stampModeActive=false, attachDataUrl=null, attachFileName=null, selectedRoute=[];
 
 function getColor(i){ return stampColors[i % stampColors.length]; }
 function initial(name){ return name ? name.charAt(0) : '?'; }
 
+function showLoading(){ document.getElementById('loading').style.display='block'; }
+function hideLoading(){ document.getElementById('loading').style.display='none'; }
+function showError(){ document.getElementById('errorMsg').style.display='block'; setTimeout(()=>document.getElementById('errorMsg').style.display='none',4000); }
+
+async function loadFromGAS(){
+  showLoading();
+  try {
+    const res = await fetch(GAS_URL);
+    const data = await res.json();
+    reqs = data.filter(r=>r.ID).map((r,i)=>({
+      id: r.ID || 'REQ-'+i,
+      title: r['件名'] || '',
+      applicant: r['申請者名'] || '',
+      date: r['ID'] ? new Date(parseInt(r['ID'])).toISOString().slice(0,10) : today,
+      status: r['ステータス'] || '審査中',
+      route: (r['承認ルート']||'').split('→').map((n,idx)=>({id:idx, name:n.trim(), role:n.trim()})).filter(a=>a.name),
+      step: parseInt(r['承認ステップ'])||0,
+      type: r['種別'] || '',
+      body: r['詳細'] || '',
+      stamps: [],
+      fileData: null,
+      fileName: r['添付ファイル名'] || null
+    }));
+    reqs.forEach(r=>{ r.stamps = r.route.map(()=>null); if(r.step>0){ for(let i=0;i<r.step;i++) r.stamps[i]='done'; } });
+    renderTable();
+  } catch(e){
+    showError();
+  }
+  hideLoading();
+}
+
+async function saveToGAS(reqData){
+  try {
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(reqData)
+    });
+  } catch(e){
+    console.log('GAS save error:', e);
+  }
+}
+
 function statusBadge(s){
-  const m={pending:['bp','審査中'],approved:['ba','承認済'],rejected:['br','却下'],review:['bv','確認中']};
-  return `<span class="badge ${m[s][0]}">${m[s][1]}</span>`;
+  const m={pending:['bp','審査中'],approved:['ba','承認済'],rejected:['br','却下'],review:['bv','確認中'],'審査中':['bp','審査中'],'承認済':['ba','承認済'],'却下':['br','却下'],'確認中':['bv','確認中']};
+  const key = m[s] ? s : 'pending';
+  return `<span class="badge ${(m[key]||m['pending'])[0]}">${(m[key]||m['pending'])[1]}</span>`;
 }
 
 function drawHanko(canvas, ini, color, size){
@@ -302,7 +345,7 @@ function drawHanko(canvas, ini, color, size){
 function renderTable(){
   document.getElementById('tBody').innerHTML = reqs.map(r => `
     <tr>
-      <td style="font-family:monospace;font-size:11px;color:#888">${r.id}</td>
+      <td style="font-family:monospace;font-size:11px;color:#888">${String(r.id).slice(-6)}</td>
       <td>${r.title}</td>
       <td>${r.applicant}</td>
       <td style="color:#888">${r.date}</td>
@@ -312,17 +355,17 @@ function renderTable(){
       <td>${statusBadge(r.status)}</td>
       <td style="display:flex;gap:5px;flex-wrap:wrap">
         <span class="al" onclick="goStamp('${r.id}')">捺印</span>
-        ${(r.status==='pending'||r.status==='review') ? `<span class="al" style="color:#3B6D11" onclick="openApprove('${r.id}',${r.step})">承認</span>` : ''}
+        ${(r.status==='pending'||r.status==='review'||r.status==='審査中'||r.status==='確認中') ? `<span class="al" style="color:#3B6D11" onclick="openApprove('${r.id}',${r.step})">承認</span>` : ''}
       </td>
     </tr>`).join('');
   document.getElementById('mT').textContent=reqs.length;
-  document.getElementById('mP').textContent=reqs.filter(r=>r.status==='pending'||r.status==='review').length;
-  document.getElementById('mA').textContent=reqs.filter(r=>r.status==='approved').length;
-  document.getElementById('mR').textContent=reqs.filter(r=>r.status==='rejected').length;
+  document.getElementById('mP').textContent=reqs.filter(r=>r.status==='pending'||r.status==='review'||r.status==='審査中'||r.status==='確認中').length;
+  document.getElementById('mA').textContent=reqs.filter(r=>r.status==='approved'||r.status==='承認済').length;
+  document.getElementById('mR').textContent=reqs.filter(r=>r.status==='rejected'||r.status==='却下').length;
 }
 
 function populateStampSel(){
-  document.getElementById('stampSel').innerHTML = reqs.map(r => `<option value="${r.id}">${r.id} — ${r.title}</option>`).join('');
+  document.getElementById('stampSel').innerHTML = reqs.map(r => `<option value="${r.id}">${String(r.id).slice(-6)} — ${r.title}</option>`).join('');
 }
 
 function renderHankoRow(r){
@@ -349,7 +392,7 @@ function renderHankoRow(r){
 
 function loadStampView(){
   const id = document.getElementById('stampSel').value;
-  const r = reqs.find(x => x.id===id);
+  const r = reqs.find(x => String(x.id)===String(id));
   if(!r) return;
   document.getElementById('stampLayer').innerHTML='';
   stampModeActive=false; updateStampModeUI();
@@ -373,7 +416,7 @@ function handleFile(e){
     document.getElementById('fileInfo').textContent='読み込み済: '+file.name;
     loadFileToCanvas(ev.target.result, file.name);
     const id = document.getElementById('stampSel').value;
-    const r = reqs.find(x => x.id===id);
+    const r = reqs.find(x => String(x.id)===String(id));
     if(r){ r.fileData=ev.target.result; r.fileName=file.name; }
     renderTable();
   };
@@ -449,7 +492,7 @@ function placeStamp(e){
   const c=document.createElement('canvas'); c.width=70; c.height=70;
   c.style.cssText='width:70px;height:70px;border-radius:50%;opacity:0.88;display:block';
   const id=document.getElementById('stampSel').value;
-  const r=reqs.find(x=>x.id===id);
+  const r=reqs.find(x=>String(x.id)===String(id));
   const approver=r?r.route[idx]:null;
   drawHanko(c, approver?initial(approver.name):'印', getColor(idx), 70);
   div.appendChild(c); makeDraggable(div,layer); layer.appendChild(div);
@@ -473,7 +516,7 @@ function makeDraggable(el, container){
 function clearStamps(){
   document.getElementById('stampLayer').innerHTML='';
   const id=document.getElementById('stampSel').value;
-  const r=reqs.find(x=>x.id===id);
+  const r=reqs.find(x=>String(x.id)===String(id));
   if(r) r.stamps=r.route.map(()=>null);
   renderHankoRow(r); renderTable();
 }
@@ -558,10 +601,10 @@ function sv(v,el){
 }
 
 function renderApprover(){
-  const p=reqs.filter(r=>r.status==='pending'||r.status==='review');
+  const p=reqs.filter(r=>r.status==='pending'||r.status==='review'||r.status==='審査中'||r.status==='確認中');
   document.getElementById('aBody').innerHTML=p.map(r=>`
     <tr>
-      <td style="font-family:monospace;font-size:11px;color:#888">${r.id}</td>
+      <td style="font-family:monospace;font-size:11px;color:#888">${String(r.id).slice(-6)}</td>
       <td>${r.title}</td><td>${r.applicant}</td>
       <td style="color:#888">${r.date}</td>
       <td style="display:flex;gap:5px">
@@ -573,27 +616,38 @@ function renderApprover(){
 
 function openApprove(id,stepIdx){
   pendingId={id,stepIdx};
-  const r=reqs.find(x=>x.id===id);
+  const r=reqs.find(x=>String(x.id)===String(id));
   document.getElementById('aMTitle').textContent='承認確認 — '+r.title;
   const a=r.route[stepIdx];
   drawHanko(document.getElementById('aStampC'), initial(a.name), getColor(stepIdx), 80);
   document.getElementById('approveModal').classList.add('open');
 }
 function closeApprove(){ document.getElementById('approveModal').classList.remove('open'); pendingId=null; }
+
 function doApprove(){
   if(!pendingId) return;
   const {id,stepIdx}=pendingId;
-  const r=reqs.find(x=>x.id===id);
-  if(stepIdx>=r.route.length-1){ r.status='approved'; r.step=r.route.length; }
-  else { r.step=stepIdx+1; r.status='review'; }
+  const r=reqs.find(x=>String(x.id)===String(id));
+  if(stepIdx>=r.route.length-1){ r.status='承認済'; r.step=r.route.length; }
+  else { r.step=stepIdx+1; r.status='確認中'; }
+  saveToGAS({id:r.id, title:r.title, applicant:r.applicant, type:r.type, body:r.body, route:r.route.map(a=>a.name).join(' → '), status:r.status, step:r.step, fileName:r.fileName||''});
   closeApprove(); renderTable(); renderApprover();
 }
+
 function doReject(){
   if(!pendingId) return;
-  reqs.find(x=>x.id===pendingId.id).status='rejected';
+  const r=reqs.find(x=>String(x.id)===String(pendingId.id));
+  r.status='却下';
+  saveToGAS({id:r.id, title:r.title, applicant:r.applicant, type:r.type, body:r.body, route:r.route.map(a=>a.name).join(' → '), status:r.status, step:r.step, fileName:r.fileName||''});
   closeApprove(); renderTable(); renderApprover();
 }
-function quickReject(id){ reqs.find(x=>x.id===id).status='rejected'; renderTable(); renderApprover(); }
+
+function quickReject(id){
+  const r=reqs.find(x=>String(x.id)===String(id));
+  r.status='却下';
+  saveToGAS({id:r.id, title:r.title, applicant:r.applicant, type:r.type, body:r.body, route:r.route.map(a=>a.name).join(' → '), status:r.status, step:r.step, fileName:r.fileName||''});
+  renderTable(); renderApprover();
+}
 
 function openNew(){
   selectedRoute=[];
@@ -607,16 +661,22 @@ function openNew(){
 }
 function closeNew(){ document.getElementById('newModal').classList.remove('open'); }
 
-function submitNew(){
+async function submitNew(){
   if(!selectedRoute.length){ alert('承認者を1名以上選択してください'); return; }
   const title=document.getElementById('nTitle').value||'無題の申請';
   const type=document.getElementById('nType').value;
   const body=document.getElementById('nBody').value||'（詳細なし）';
-  const newId='REQ-'+String(reqs.length+3).padStart(3,'0');
-  reqs.unshift({
-    id:newId, title, applicant:settings.selfName, date:today,
-    status:'pending', route:[...selectedRoute], step:0, type, body,
+  const newReq = {
+    id: Date.now(),
+    title, applicant:settings.selfName, date:today,
+    status:'審査中', route:[...selectedRoute], step:0, type, body,
     stamps:selectedRoute.map(()=>null), fileData:attachDataUrl, fileName:attachFileName
+  };
+  reqs.unshift(newReq);
+  await saveToGAS({
+    title, applicant:settings.selfName, type, body,
+    route:selectedRoute.map(a=>a.name).join(' → '),
+    status:'審査中', step:0, fileName:attachFileName||''
   });
   attachDataUrl=null; attachFileName=null;
   document.getElementById('nTitle').value='';
@@ -627,8 +687,8 @@ function submitNew(){
   renderTable(); populateStampSel();
 }
 
-renderTable();
-populateStampSel();
+loadFromGAS();
+renderSettings();
 updateStampModeUI();
 </script>
 </body>
